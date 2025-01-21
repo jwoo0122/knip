@@ -1,21 +1,40 @@
 import type { Scripts } from '../types/package-json.js';
-import { join } from '../util/path.js';
 import { _require } from '../util/require.js';
+import { promises as fs, existsSync } from 'fs';
 
 type LoadPackageManifestOptions = { dir: string; packageName: string; cwd: string };
 
-export const loadPackageManifest = ({ dir, packageName, cwd }: LoadPackageManifestOptions) => {
-  // TODO Not sure what's the most efficient way to get a package.json, but this seems to do the job across package
-  // managers (npm, Yarn, pnpm)
+export const loadPackageManifest = async ({ dir, packageName, cwd }: LoadPackageManifestOptions) => {
   try {
-    return _require(join(dir, 'node_modules', packageName, 'package.json'));
-  } catch (_error) {
-    if (dir !== cwd) {
-      try {
-        return _require(join(cwd, 'node_modules', packageName, 'package.json'));
-      } catch (_error) {
-        // Explicitly suppressing errors here
+    // Get the main entry file of the package
+    const packageEntryPath = _require.resolve(packageName, { paths: [dir, cwd] });
+    
+    // Replace the last occurrence of packageName with package.json
+    const manifestPath = packageEntryPath.replace(new RegExp(`${packageName}[^${packageName}]*$`), `${packageName}/package.json`);
+
+    if (existsSync(manifestPath)) {
+      return JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+    }
+
+    throw new Error(`package.json not found for ${packageName}`);
+  } catch {
+    try {
+      // Get the main entry file of the package
+      const packageEntryPath = _require.resolve(packageName, { paths: [dir, cwd] });
+      
+      // Remove leading '@' from packageName if present
+      const normalizedPackageName = packageName.replace(/^@/, '');
+      
+      // Replace the last occurrence of packageName with package.json
+      const manifestPath = packageEntryPath.replace(new RegExp(`${normalizedPackageName}[^${normalizedPackageName}]*$`), `${normalizedPackageName}/package.json`);
+  
+      if (existsSync(manifestPath)) {
+        return JSON.parse(await fs.readFile(manifestPath, 'utf8'));
       }
+  
+      throw new Error(`package.json not found for ${normalizedPackageName}`);
+    } catch {
+      // Explicitly suppressing errors here
     }
     // Explicitly suppressing errors here
   }
